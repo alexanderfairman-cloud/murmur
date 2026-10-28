@@ -315,7 +315,7 @@ enum CLI {
                 }
                 let ms = timings.sorted()[timings.count / 2]
 
-                let cleaned = TextCleaner().clean(raw)
+                let cleaned = SpokenText.tidy(raw)
                 // `--my-dictionary` tests against your real word list, with the same real-word guard the app uses.
                 let corrector = useMyDictionary
                     ? DictionaryCorrector(entries: (try? AppFiles().loadDictionary()) ?? AppFiles.starterDictionary, isKnownWord: AppModel.isRealWord)

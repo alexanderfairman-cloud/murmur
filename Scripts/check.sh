@@ -5,13 +5,14 @@
 #   3. The window's logic: adding and deleting words, saving settings, deleting a dictation, fixing a word, a damaged dictionary.
 #   4. Speech smoke test: the Mac reads a sentence aloud, the real speech model turns it back into text.
 #      This proves the model loads, runs on this Mac, is fast, and the dictionary is applied.
-#   5. Pauses: recordings with exact silences become sentences and paragraphs.
+#   5. Spoken email addresses are written with @, and ordinary talk about websites is left alone.
+#   6. Pauses: recordings with exact silences become sentences and paragraphs.
 #   None of this proves the microphone, the Fn key, typing into other apps, or a real voice work. Those need a person.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source Scripts/toolchain-fix.sh
 
-echo "== 1/5 Unit tests"
+echo "== 1/6 Unit tests"
 # The Command Line Tools keep the Swift testing library outside the compiler's default search path.
 FW=/Library/Developer/CommandLineTools/Library/Developer/Frameworks
 if [ -d "$FW/Testing.framework" ]; then
@@ -24,7 +25,7 @@ echo "$TEST_OUT" | tail -3
 # The last line of a fully green run is "Test run with N tests passed".
 echo "$TEST_OUT" | grep -q "Test run with [0-9]* tests* passed" || { echo "FAIL: unit tests"; exit 1; }
 
-echo "== 2/5 Screens draw"
+echo "== 2/6 Screens draw"
 swift build -c release --product Murmur 2>&1 | tail -1
 BIN="$(swift build -c release --show-bin-path)/Murmur"
 TMP="$(mktemp -d)"
@@ -47,10 +48,10 @@ echo "PASS: all 11 window screens drew"
 iconutil -c icns "$TMP/icon.iconset" -o "$TMP/icon.icns" || { echo "FAIL: icon could not be packaged"; exit 1; }
 echo "PASS: Dock icon drew at all 10 sizes"
 
-echo "== 3/5 What the window's buttons do"
+echo "== 3/6 What the window's buttons do"
 "$BIN" --selftest-model
 
-echo "== 4/5 Speech smoke test"
+echo "== 4/6 Speech smoke test"
 say -v Samantha -o "$TMP/sentence.aiff" "I use clawed code and super base every day. Let's ship it on Friday."
 RESULT="$("$BIN" --transcribe "$TMP/sentence.aiff")"
 echo "$RESULT"
@@ -70,7 +71,24 @@ if problems:
 print(f"PASS: {r['transcribeMs']} ms for {r['audioSeconds']} s of audio (on this Mac, speech model from disk)")
 PY
 
-echo "== 5/5 Pauses become sentences and paragraphs"
+echo "== 5/6 Spoken email addresses"
+# The Mac reads addresses aloud; the model writes the words, and Murmur must turn "at" into @ without touching ordinary talk.
+say -v Samantha -o "$TMP/email-a.aiff" "Please write to john dot smith at company dot com tomorrow."
+say -v Samantha -o "$TMP/email-b.aiff" "I will look at google dot com for details."
+EA="$("$BIN" --transcribe "$TMP/email-a.aiff" --no-pauses)"
+EB="$("$BIN" --transcribe "$TMP/email-b.aiff" --no-pauses)"
+python3 -I - "$EA" "$EB" <<'PY'
+import json, sys
+a, b = (json.loads(x)["text"] for x in sys.argv[1:3])
+problems = []
+if "john.smith@company.com" not in a: problems.append("a spoken address did not become john.smith@company.com: " + repr(a))
+if "@" in b: problems.append("ordinary talk about a website was turned into an address: " + repr(b))
+if problems:
+    print("FAIL:", "; ".join(problems)); sys.exit(1)
+print("PASS: a spoken address is written with @, and talk about a website is left alone")
+PY
+
+echo "== 6/6 Pauses become sentences and paragraphs"
 # The Mac reads three recordings with exact silences in them. The voice alone cannot be used to test this,
 # because it barely pauses on its own (about 0.2 s, even between paragraphs).
 say -v Samantha -o "$TMP/pause-a.aiff" "I use clawed code and super base every day[[slnc 1200]]then I ship it on Friday[[slnc 2600]]please rebuild everything with all of this logic"

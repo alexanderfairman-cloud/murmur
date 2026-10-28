@@ -12,6 +12,8 @@ It replaces Wispr Flow. It is a native Mac app (not a website in a wrapper), so 
 
 Pauses become punctuation. Murmur measures the silences in your recording. A pause of 0.8 seconds or more ends a sentence (full stop, capital letter). A pause of 1.8 seconds or more starts a new paragraph. A pause right after a word like "to" or "the" is treated as thinking, not as an ending. These lengths are first guesses, so if they feel wrong, change `sentencePause` and `paragraphPause` in `settings.json` (or set `pauseBreaks` to `false`). Dictations without a long pause are not touched.
 
+Email addresses are written out as you say them. "janedoe at gmail dot com" becomes `janedoe@gmail.com`. It also handles "john dot smith at company dot com", spoken "underscore" and "dash", and spelled-out letters. Murmur only does this when the words really look like an address (a name, then "at", then something ending in .com, .org and so on), so "look at google.com" stays as it is. If the speech model mishears the name part (it wrote "janedoh"), add the right address to Words with the wrong one under "heard as", or use Fix a word in History.
+
 Extra keys, same as Wispr Flow:
 
 | Keys | What happens |

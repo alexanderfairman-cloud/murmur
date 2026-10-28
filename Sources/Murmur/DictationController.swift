@@ -218,8 +218,7 @@ final class DictationController {
         do {
             let raw = try await transcriber.dictate(samples, rules: settings().pauseRules).text
             let ms = Int(Date().timeIntervalSince(started) * 1000)
-            let cleaner = TextCleaner()
-            let cleaned = settings().removeFillers ? cleaner.clean(raw) : cleaner.trimmed(raw)
+            let cleaned = SpokenText.tidy(raw, removeFillers: settings().removeFillers)
             let (text, corrections) = corrector().apply(to: cleaned)
             guard !text.isEmpty else {
                 tell("Didn't catch that")

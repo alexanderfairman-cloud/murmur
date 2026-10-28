@@ -275,6 +275,93 @@ struct WindowLogicTests {
     }
 }
 
+@Suite("Spoken email addresses")
+struct EmailTests {
+    private func f(_ s: String) -> String { EmailFormatter.format(s) }
+
+    @Test func theCaseThatFailed() {
+        #expect(f("janedoe at gmail.com") == "janedoe@gmail.com")
+        #expect(f("I said janedoe at gmail.com, and you'll notice") == "I said janedoe@gmail.com, and you'll notice")
+    }
+
+    @Test func keepsPunctuationAroundTheAddress() {
+        #expect(f("Write to janedoe at gmail.com.") == "Write to janedoe@gmail.com.")
+        #expect(f("(janedoe at gmail.com)") == "(janedoe@gmail.com)")
+        #expect(f("Mail janedoe at gmail.com, then call.") == "Mail janedoe@gmail.com, then call.")
+    }
+
+    @Test func writesAddressesInLowercase() {
+        #expect(f("Janedoe at Gmail.com") == "janedoe@gmail.com")
+    }
+
+    @Test func handlesSpokenSymbolsAndSpelledLetters() {
+        #expect(f("john dot smith at company dot com tomorrow") == "john.smith@company.com tomorrow")
+        #expect(f("john.smith at company.com") == "john.smith@company.com")
+        #expect(f("My address is jane underscore doe at yahoo.com") == "My address is jane_doe@yahoo.com")
+        #expect(f("a dash b at x.org") == "a-b@x.org")
+        #expect(f("Send it to j d doe at gmail.com thanks") == "Send it to jddoe@gmail.com thanks")
+        #expect(f("support at example dot co dot uk") == "support@example.co.uk")
+    }
+
+    @Test func fillsInTheEndingForWellKnownProviders() {
+        #expect(f("janedoe at gmail") == "janedoe@gmail.com")
+        #expect(f("janedoe at gmail, thanks") == "janedoe@gmail.com, thanks")
+        #expect(f("janedoe at acme") == "janedoe at acme")
+    }
+
+    @Test func handlesAnAddressAfterTheWordAtInProse() {
+        #expect(f("email me at janedoe at gmail.com") == "email me at janedoe@gmail.com")
+        #expect(f("For help, contact us at info at logos.com") == "For help, contact us at info@logos.com")
+        #expect(f("write to contact at logos.com") == "write to contact@logos.com")
+    }
+
+    @Test func leavesOrdinarySentencesAlone() {
+        for sentence in [
+            "I will look at google.com for details.", "Meet me at starbucks.com", "She is at home.", "Aim at the target dot",
+            "Done. At gmail.com we have it.", "We arrived at noon dot com", "It is at 5.", "look at gmail", "foo at bar dot baz",
+            "Stay at hotel.com tonight", "I'm at gmail.com now", "at gmail.com", "janedoe at",
+        ] {
+            #expect(f(sentence) == sentence, "changed: \(sentence)")
+        }
+    }
+
+    @Test func handlesTwoAddressesAndNoneAtAll() {
+        #expect(f("a at x.com and b at y.org") == "a@x.com and b@y.org")
+        #expect(f("no address here") == "no address here")
+        #expect(f("") == "")
+    }
+
+    @Test func theDictionaryLeavesAddressesAlone() {
+        let c = DictionaryCorrector(entries: [DictionaryEntry(word: "Alex"), DictionaryEntry(word: "Vercel")])
+        #expect(c.apply(to: "write to alex@gmail.com about it").text == "write to alex@gmail.com about it")
+        #expect(c.apply(to: "see https://vercel.com/alex today").text == "see https://vercel.com/alex today")
+        #expect(c.apply(to: "alex wrote to alex@gmail.com").text == "Alex wrote to alex@gmail.com")
+    }
+
+    @Test func aSavedAddressFixesAMisheardOne() {
+        let c = DictionaryCorrector(entries: [DictionaryEntry(word: "janedoe@gmail.com", heardAs: ["janedoh@gmail.com"])])
+        #expect(c.apply(to: "write to janedoh@gmail.com today").text == "write to janedoe@gmail.com today")
+        #expect(c.apply(to: "janedoh@gmail.com is mine.").text == "janedoe@gmail.com is mine.")
+        #expect(c.apply(to: "Mail janedoh@gmail.com.").text == "Mail janedoe@gmail.com.")
+        // A different address is never nudged toward the saved one, and neither is a sentence start capitalised.
+        #expect(c.apply(to: "janedoe@yahoo.com stays").text == "janedoe@yahoo.com stays")
+        #expect(c.apply(to: "janedoe@gmail.com stays").text == "janedoe@gmail.com stays")
+    }
+
+    @Test func fixingAMisheardAddressInHistoryTeachesTheDictionary() {
+        var list = WordList(entries: [])
+        list.add("janedoe@gmail.com")
+        let added = list.claim("janedoh@gmail.com", for: "janedoe@gmail.com")
+        #expect(added)
+        let c = DictionaryCorrector(entries: list.entries)
+        #expect(c.apply(to: "My email is janedoh@gmail.com.").text == "My email is janedoe@gmail.com.")
+    }
+
+    @Test func fullPipelineFixesFillersAndAddressesTogether() {
+        #expect(SpokenText.tidy("Um, email me at janedoe at gmail.com, uh, thanks.") == "Email me at janedoe@gmail.com, thanks.")
+    }
+}
+
 @Suite("Fix a word")
 struct FixAWordTests {
     @Test func splitsIntoWordsAndKeepsPunctuationApart() {
