@@ -36,6 +36,8 @@ public enum EmailFormatter {
         "glance", "glanced", "stare", "stared", "smile", "smiled", "laugh", "laughed", "good", "bad", "great", "best",
         "worst", "and", "or", "but", "the", "an", "of", "to", "in", "on", "for", "with", "by", "is", "are", "was", "were",
         "be", "been", "do", "does", "did", "have", "has", "had", "not", "no", "yes", "ok", "okay", "also", "just", "even", "only", "still", "maybe", "sorry",
+        "shop", "shopped", "shopping", "buy", "bought", "buying", "order", "ordered", "found", "got", "saw", "read",
+        "check", "checked", "go", "went", "going", "come", "came",
     ]
 
     private struct Piece {
@@ -57,6 +59,7 @@ public enum EmailFormatter {
         for i in pieces.indices where pieces[i].core.lowercased() == "at" && pieces[i].leading.isEmpty && pieces[i].trailing.isEmpty {
             guard i >= 1, i + 1 < pieces.count, let local = parseLocal(pieces, before: i), local.first > consumedThrough,
                   let domain = parseDomain(pieces, after: i) ?? parseDomainSkippingStrayA(pieces, after: i)
+                      ?? parseDomainWithSplitName(pieces, after: i)
             else { continue }
             let start = pieces[local.first].coreRange.lowerBound
             let end = pieces[domain.last].coreRange.upperBound
@@ -147,6 +150,44 @@ public enum EmailFormatter {
         let stray = pieces[at + 1]
         guard stray.core.lowercased() == "a", stray.leading.isEmpty, stray.trailing.isEmpty, at + 2 < pieces.count else { return nil }
         return parseDomain(pieces, after: at + 1)
+    }
+
+    /// "pat at acme corp.com" or "pat at acme corp dot com": the speech model sometimes writes one company name as
+    /// separate words. Up to three plain words (after a stray "a", if there is one) are joined into one word, and that
+    /// is read as the start of the domain. Only tried when the words as they stand are not an address.
+    private static func parseDomainWithSplitName(_ pieces: [Piece], after at: Int) -> (text: String, last: Int)? {
+        var first = at + 1
+        let lead = pieces[first]
+        if first + 1 < pieces.count, lead.core.lowercased() == "a", lead.leading.isEmpty, lead.trailing.isEmpty { first += 1 }
+
+        var end = first
+        while end < pieces.count, end - first < 3 {
+            let piece = pieces[end]
+            guard piece.leading.isEmpty || end == first, isPlainWord(piece.core), piece.core.lowercased() != "dot" else { break }
+            end += 1
+            if !piece.trailing.isEmpty { break }
+        }
+        // A dotted word straight after them ("corp.com") is the end of the same name.
+        if end > first, end < pieces.count, pieces[end - 1].trailing.isEmpty,
+           pieces[end].leading.isEmpty, pieces[end].core.contains("."), isDomainPart(pieces[end].core) {
+            end += 1
+        }
+        guard end - first >= 2 else { return nil }
+
+        let name = Piece(
+            range: pieces[first].range.lowerBound..<pieces[end - 1].range.upperBound,
+            leading: pieces[first].leading,
+            core: pieces[first..<end].map(\.core).joined(),
+            trailing: pieces[end - 1].trailing,
+            coreRange: pieces[first].coreRange.lowerBound..<pieces[end - 1].coreRange.upperBound)
+        let merged = Array(pieces[...at]) + [name] + Array(pieces[end...])
+        guard let result = parseDomain(merged, after: at) else { return nil }
+        // Back to the numbering of the original words.
+        return (result.text, result.last + (end - at - 2))
+    }
+
+    private static func isPlainWord(_ word: String) -> Bool {
+        !word.isEmpty && word.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) || $0 == "-" }
     }
 
     private static func isDomainPart(_ word: String) -> Bool {

@@ -331,6 +331,20 @@ struct EmailTests {
         #expect(f("") == "")
     }
 
+    @Test func joinsACompanyNameTheModelSplitIntoWords() {
+        // The speech model sometimes writes a company name as separate words: "acme corp.com". It is one name.
+        #expect(f("Pat at a acme corp.com") == "pat@acmecorp.com")
+        #expect(f("Email Pat at acme corp.com, thanks") == "Email pat@acmecorp.com, thanks")
+        #expect(f("under your admin email account, Pat at a acme corp.com.") == "under your admin email account, pat@acmecorp.com.")
+        #expect(f("pat at acme corp dot com") == "pat@acmecorp.com")
+        #expect(f("pat at big blue sky dot com") == "pat@bigbluesky.com")
+        #expect(f("pat at a acme corp dot co dot uk") == "pat@acmecorp.co.uk")
+        // Plain talk about shopping or visiting a site is still left alone.
+        #expect(f("I shopped at best buy.com") == "I shopped at best buy.com")
+        #expect(f("I bought it at best buy.com") == "I bought it at best buy.com")
+        #expect(f("We met at a big conference center.com") == "We met at a big conference center.com")
+    }
+
     @Test func ignoresAStrayAAfterAt() {
         // The speech model sometimes hears "at a" where the speaker said "at". This was typed as it came, unchanged.
         #expect(f("pat at a acmeco.com.") == "pat@acmeco.com.")
