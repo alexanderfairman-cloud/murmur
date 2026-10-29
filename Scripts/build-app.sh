@@ -39,3 +39,11 @@ rm -rf "$(dirname "$ICONSET")"
 codesign --force --sign "$SIGN_IDENTITY" --identifier com.jamesseriph.murmur "$APP"
 codesign --verify --strict "$APP"
 echo "Built $APP (signed with: $SIGN_IDENTITY)"
+
+# If Murmur is installed in Applications (the copy that opens at login), keep it the same as this build.
+# Quit Murmur before running this script: replacing the app while it runs can crash it.
+if [ -d /Applications/Murmur.app ]; then
+  rm -rf /Applications/Murmur.app
+  ditto "$APP" /Applications/Murmur.app
+  echo "Updated /Applications/Murmur.app"
+fi

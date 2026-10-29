@@ -331,6 +331,19 @@ struct EmailTests {
         #expect(f("") == "")
     }
 
+    @Test func ignoresAStrayAAfterAt() {
+        // The speech model sometimes hears "at a" where the speaker said "at". This was typed as it came, unchanged.
+        #expect(f("pat at a acmeco.com.") == "pat@acmeco.com.")
+        #expect(
+            f("under your admin email account, pat at a acmeco.com.")
+                == "under your admin email account, pat@acmeco.com.")
+        #expect(f("janedoe at a gmail") == "janedoe@gmail.com")
+        // A spoken letter "a" in the domain is still a letter, and ordinary talk is still left alone.
+        #expect(f("janedoe at a dot com") == "janedoe@a.com")
+        #expect(f("Look at a google.com result") == "Look at a google.com result")
+        #expect(f("We stay at a hotel.com tonight") == "We stay at a hotel.com tonight")
+    }
+
     @Test func theDictionaryLeavesAddressesAlone() {
         let c = DictionaryCorrector(entries: [DictionaryEntry(word: "Alex"), DictionaryEntry(word: "Vercel")])
         #expect(c.apply(to: "write to alex@gmail.com about it").text == "write to alex@gmail.com about it")
@@ -504,5 +517,65 @@ struct StorageTests {
         let files = tempFiles()
         try Data(#"{"entries": [ {"word": "Oops" "heardAs": []} ]}"#.utf8).write(to: files.dictionaryURL)
         #expect(throws: (any Error).self) { try files.loadDictionary() }
+    }
+}
+
+@Suite("Model cache guard")
+struct ModelCacheGuardTests {
+    private func makeFolders(cacheName: String = "com.apple.e5rt.e5bundlecache") throws -> (state: URL, cache: URL) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("murmur-cache-test-\(UUID().uuidString)")
+        let cache = root.appendingPathComponent(cacheName)
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: cache.appendingPathComponent("entry"))
+        return (root.appendingPathComponent("model-load.json"), cache)
+    }
+
+    private func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
+
+    @Test func theFirstStartThrowsAwayAnyOldCopy() throws {
+        let (state, cache) = try makeFolders()
+        let cleared = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_000_000).prepare()
+        #expect(cleared)
+        #expect(!exists(cache))
+    }
+
+    @Test func keepsTheCopyAfterAGoodStartSinceTheSameRestart() throws {
+        let (state, cache) = try makeFolders()
+        let first = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_000_000)
+        first.prepare()
+        first.finished()
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true) // Core ML makes it again
+        // The Mac's start time moved by 5 seconds because its clock was corrected. That is not a restart.
+        let cleared = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_000_005).prepare()
+        #expect(!cleared)
+        #expect(exists(cache))
+    }
+
+    @Test func throwsAwayTheCopyAfterTheMacRestarted() throws {
+        let (state, cache) = try makeFolders()
+        let first = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_000_000)
+        first.prepare()
+        first.finished()
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        let cleared = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_005_000).prepare()
+        #expect(cleared)
+        #expect(!exists(cache))
+    }
+
+    @Test func throwsAwayTheCopyWhenTheLastStartNeverFinished() throws {
+        let (state, cache) = try makeFolders()
+        let first = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_000_000)
+        first.prepare() // the app died while loading, so finished() was never called
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        let cleared = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_000_000).prepare()
+        #expect(cleared)
+        #expect(!exists(cache))
+    }
+
+    @Test func neverRemovesAFolderThatIsNotTheModelCopy() throws {
+        let (state, folder) = try makeFolders(cacheName: "Documents")
+        let cleared = ModelCacheGuard(stateURL: state, cacheURL: folder, boot: 1_000_000).prepare()
+        #expect(!cleared)
+        #expect(exists(folder.appendingPathComponent("entry")))
     }
 }

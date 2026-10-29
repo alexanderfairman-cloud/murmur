@@ -56,7 +56,7 @@ public enum EmailFormatter {
 
         for i in pieces.indices where pieces[i].core.lowercased() == "at" && pieces[i].leading.isEmpty && pieces[i].trailing.isEmpty {
             guard i >= 1, i + 1 < pieces.count, let local = parseLocal(pieces, before: i), local.first > consumedThrough,
-                  let domain = parseDomain(pieces, after: i)
+                  let domain = parseDomain(pieces, after: i) ?? parseDomainSkippingStrayA(pieces, after: i)
             else { continue }
             let start = pieces[local.first].coreRange.lowerBound
             let end = pieces[domain.last].coreRange.upperBound
@@ -139,6 +139,14 @@ public enum EmailFormatter {
         // "janedoe at gmail": a well-known provider with the ending left off.
         if labels.count == 1, let full = providers[labels[0].lowercased()] { return (full, last) }
         return nil
+    }
+
+    /// "pat at a acmeco.com": the speech model sometimes hears a stray "a" after "at". Only tried when the
+    /// words as they stand are not an address, so a spoken letter ("jane at a dot com") still counts as a letter.
+    private static func parseDomainSkippingStrayA(_ pieces: [Piece], after at: Int) -> (text: String, last: Int)? {
+        let stray = pieces[at + 1]
+        guard stray.core.lowercased() == "a", stray.leading.isEmpty, stray.trailing.isEmpty, at + 2 < pieces.count else { return nil }
+        return parseDomain(pieces, after: at + 1)
     }
 
     private static func isDomainPart(_ word: String) -> Bool {
