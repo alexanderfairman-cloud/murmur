@@ -216,7 +216,8 @@ final class DictationController {
         }
         let started = Date()
         do {
-            let raw = try await transcriber.dictate(samples, rules: settings().pauseRules).text
+            let dictation = try await transcriber.dictate(samples, rules: settings().pauseRules)
+            let raw = dictation.text
             let ms = Int(Date().timeIntervalSince(started) * 1000)
             let cleaned = SpokenText.tidy(raw, removeFillers: settings().removeFillers)
             let (text, corrections) = corrector().apply(to: cleaned)
@@ -236,7 +237,7 @@ final class DictationController {
             } else {
                 tell("Copied. Turn on Accessibility so Murmur can type it for you", seconds: 5)
             }
-            log.info("dictated \(seconds, format: .fixed(precision: 1)) s of audio in \(ms) ms, typed=\(pasted)")
+            log.info("dictated \(seconds, format: .fixed(precision: 1)) s of audio in \(ms) ms, \(max(dictation.pieces.count, 1)) piece(s), typed=\(pasted)")
         } catch {
             log.error("transcription failed: \(error.localizedDescription)")
             tell("Something went wrong. Try again")

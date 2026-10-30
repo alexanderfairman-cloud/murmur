@@ -536,60 +536,63 @@ struct StorageTests {
 
 @Suite("Model cache guard")
 struct ModelCacheGuardTests {
-    private func makeFolders(cacheName: String = "com.apple.e5rt.e5bundlecache") throws -> (state: URL, cache: URL) {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("murmur-cache-test-\(UUID().uuidString)")
-        let cache = root.appendingPathComponent(cacheName)
-        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
-        try Data("x".utf8).write(to: cache.appendingPathComponent("entry"))
-        return (root.appendingPathComponent("model-load.json"), cache)
+    private func makeFolder(named name: String) throws -> URL {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("murmur-cache-test-\(UUID().uuidString)").appendingPathComponent(name)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: folder.appendingPathComponent("entry"))
+        return folder
     }
 
-    private func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
-
-    @Test func theFirstStartThrowsAwayAnyOldCopy() throws {
-        let (state, cache) = try makeFolders()
-        let cleared = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_000_000).prepare()
-        #expect(cleared)
-        #expect(!exists(cache))
+    @Test func throwsAwayTheSavedCopy() throws {
+        let cache = try makeFolder(named: "com.apple.e5rt.e5bundlecache")
+        #expect(ModelCacheGuard(cacheURL: cache).clear())
+        #expect(!FileManager.default.fileExists(atPath: cache.path))
     }
 
-    @Test func keepsTheCopyAfterAGoodStartSinceTheSameRestart() throws {
-        let (state, cache) = try makeFolders()
-        let first = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_000_000)
-        first.prepare()
-        first.finished()
-        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true) // Core ML makes it again
-        // The Mac's start time moved by 5 seconds because its clock was corrected. That is not a restart.
-        let cleared = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_000_005).prepare()
-        #expect(!cleared)
-        #expect(exists(cache))
-    }
-
-    @Test func throwsAwayTheCopyAfterTheMacRestarted() throws {
-        let (state, cache) = try makeFolders()
-        let first = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_000_000)
-        first.prepare()
-        first.finished()
-        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
-        let cleared = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_005_000).prepare()
-        #expect(cleared)
-        #expect(!exists(cache))
-    }
-
-    @Test func throwsAwayTheCopyWhenTheLastStartNeverFinished() throws {
-        let (state, cache) = try makeFolders()
-        let first = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_000_000)
-        first.prepare() // the app died while loading, so finished() was never called
-        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
-        let cleared = ModelCacheGuard(stateURL: state, cacheURL: cache, boot: 1_000_000).prepare()
-        #expect(cleared)
-        #expect(!exists(cache))
+    @Test func doesNothingWhenThereIsNoSavedCopy() throws {
+        let cache = try makeFolder(named: "com.apple.e5rt.e5bundlecache")
+        try FileManager.default.removeItem(at: cache)
+        #expect(!ModelCacheGuard(cacheURL: cache).clear())
     }
 
     @Test func neverRemovesAFolderThatIsNotTheModelCopy() throws {
-        let (state, folder) = try makeFolders(cacheName: "Documents")
-        let cleared = ModelCacheGuard(stateURL: state, cacheURL: folder, boot: 1_000_000).prepare()
-        #expect(!cleared)
-        #expect(exists(folder.appendingPathComponent("entry")))
+        let folder = try makeFolder(named: "Documents")
+        #expect(!ModelCacheGuard(cacheURL: folder).clear())
+        #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("entry").path))
+    }
+}
+
+@Suite("Sentence smoothing")
+struct SentenceSmootherTests {
+    private func s(_ text: String) -> String { SentenceSmoother.smooth(text) }
+
+    @Test func theCaseThatWasCutInTwo() {
+        #expect(
+            s("Sam, what a cool name you have. And Lee shared wonderful things about you.")
+                == "Sam, what a cool name you have, and Lee shared wonderful things about you.")
+        #expect(s("I like the design. But the colors are off.") == "I like the design, but the colors are off.")
+        #expect(s("We could go now. Or we could wait.") == "We could go now, or we could wait.")
+    }
+
+    @Test func handlesSeveralInOneDictation() {
+        #expect(s("I came early. And I stayed late. But I left happy.") == "I came early, and I stayed late, but I left happy.")
+    }
+
+    @Test func leavesRealBreaksAlone() {
+        #expect(s("Thanks. So what now?") == "Thanks. So what now?")
+        #expect(s("Is it ready? And is it tested?") == "Is it ready? And is it tested?")
+        #expect(s("Done.\n\nAnd then we start.") == "Done.\n\nAnd then we start.")
+        #expect(s("Okay. And, honestly, yes.") == "Okay. And, honestly, yes.")
+        #expect(s("And so it begins.") == "And so it begins.")
+        #expect(s("Wait... And now?") == "Wait... And now?")
+        #expect(s("Bring cups, plates, etc. And napkins.") == "Bring cups, plates, etc. And napkins.")
+        #expect(s("Andrew came. Andy left.") == "Andrew came. Andy left.")
+    }
+
+    @Test func worksInTheFullPipelineWithFillersAndAddresses() {
+        #expect(
+            SpokenText.tidy("Um, what a cool name you have. And email me at janedoe at gmail.com.")
+                == "What a cool name you have, and email me at janedoe@gmail.com.")
     }
 }

@@ -51,9 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MenuBarDelegate {
     // MARK: - Speech model
 
     private func loadModel() {
-        let modelCache = ModelCacheGuard.forThisMac(files: model.files)
-        if modelCache?.prepare() == true {
-            log.info("threw away the saved copy of the speech model (the Mac restarted, or the last start did not finish)")
+        if ModelCacheGuard.forThisApp()?.clear() == true {
+            log.info("threw away the saved copy of the speech model before loading it")
         }
         Task {
             do {
@@ -65,7 +64,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, MenuBarDelegate {
                         if downloading, !dictation.isRecording, !window.isVisible { hud.progress(fraction) }
                     }
                 }
-                modelCache?.finished()
                 model.modelStatus = .ready
                 hud.hide()
                 log.info("speech model ready")
