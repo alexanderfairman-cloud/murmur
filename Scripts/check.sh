@@ -97,10 +97,15 @@ say -v Samantha -o "$TMP/pause-b.aiff" "I would like to[[slnc 1300]]talk about t
 say -v Samantha -o "$TMP/pause-c.aiff" "I think we should[[slnc 500]]ship it on Friday if the tests pass"
 A="$("$BIN" --transcribe "$TMP/pause-a.aiff")"
 B="$("$BIN" --transcribe "$TMP/pause-b.aiff")"
+# Thinking pauses after a verb and after a condition: no full stop and no capital letter there.
+say -v Samantha -o "$TMP/pause-d.aiff" "That's where you'll also be able to generate[[slnc 1300]]group reports and see the full functionality of what we've built"
+say -v Samantha -o "$TMP/pause-e.aiff" "If you have any questions[[slnc 1300]]I'm here and would love to have a call or a check in any time"
 C="$("$BIN" --transcribe "$TMP/pause-c.aiff")"
-python3 -I - "$A" "$B" "$C" <<'PY'
+D="$("$BIN" --transcribe "$TMP/pause-d.aiff")"
+E="$("$BIN" --transcribe "$TMP/pause-e.aiff")"
+python3 -I - "$A" "$B" "$C" "$D" "$E" <<'PY'
 import json, sys
-a, b, c = (json.loads(x)["text"] for x in sys.argv[1:4])
+a, b, c, d, e = (json.loads(x)["text"] for x in sys.argv[1:6])
 problems = []
 # 1.2 s of quiet ends a sentence, 2.6 s starts a paragraph
 if "every day." not in a: problems.append("1.2 s pause did not end the sentence")
@@ -109,9 +114,12 @@ if a.count("\n\n") != 1 or "Friday.\n\nPlease" not in a: problems.append("2.6 s 
 if "to." in b or "to\n" in b or "to talk" not in b: problems.append("unfinished sentence was cut: " + repr(b))
 # 0.5 s is too short to count
 if "should." in c or "\n" in c or "should ship" not in c: problems.append("0.5 s pause was treated as a break: " + repr(c))
+# a pause after "generate" or inside "If you have any questions" is only thinking
+if "generate." in d or "Group" in d or "generate group" not in d: problems.append("a pause after a verb became a full stop: " + repr(d))
+if "questions." in e or "questions," not in e: problems.append("a condition was cut from its second half: " + repr(e))
 if problems:
     print("FAIL:", "; ".join(problems)); sys.exit(1)
-print("PASS: sentence break, paragraph break, unfinished sentence and short pause all handled")
+print("PASS: sentence break, paragraph break, unfinished sentence, short pause and thinking pauses all handled")
 PY
 
 echo "== 7/7 Spoken comma and period"

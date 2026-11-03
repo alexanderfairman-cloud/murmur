@@ -19,11 +19,14 @@ public struct PauseRules: Equatable {
 /// A stretch of speech between two long silences, as a range of sample positions in the recording.
 public struct SpeechSegment: Equatable {
     public let range: Range<Int>
+    /// Just the talking in `range`, with a little padding: without the quiet that `range` keeps on each side.
+    public let speech: Range<Int>
     /// How long the silence just before this piece was, in seconds. Zero for the first piece.
     public let silenceBefore: Double
 
-    public init(range: Range<Int>, silenceBefore: Double) {
+    public init(range: Range<Int>, speech: Range<Int>? = nil, silenceBefore: Double) {
         self.range = range
+        self.speech = speech ?? range
         self.silenceBefore = silenceBefore
     }
 }
@@ -73,18 +76,40 @@ public struct SilenceSplitter {
         let total = samples.count
         var segments: [SpeechSegment] = []
         var pieceStart = max(0, first - Self.paddingFrames)
+        var speechStart = first
         var silenceBefore = 0.0
         for silence in silences {
             let middle = (silence.start + silence.end) / 2
+            let speechFrom = max(pieceStart, speechStart - Self.paddingFrames)
+            let speechTo = min(middle, silence.start + Self.paddingFrames)
             segments.append(SpeechSegment(
                 range: pieceStart * Self.frameSamples..<min(middle * Self.frameSamples, total),
+                speech: speechFrom * Self.frameSamples..<min(speechTo * Self.frameSamples, total),
                 silenceBefore: silenceBefore))
             pieceStart = middle
+            speechStart = silence.end
             silenceBefore = Double(silence.end - silence.start) * Self.frameSeconds
         }
         let end = min((last + 1 + Self.paddingFrames) * Self.frameSamples, total)
-        segments.append(SpeechSegment(range: pieceStart * Self.frameSamples..<end, silenceBefore: silenceBefore))
+        let speechFrom = max(pieceStart, speechStart - Self.paddingFrames)
+        segments.append(SpeechSegment(
+            range: pieceStart * Self.frameSamples..<end,
+            speech: speechFrom * Self.frameSamples..<end,
+            silenceBefore: silenceBefore))
         return segments
+    }
+
+    /// The talking of several pieces joined with only `gap` seconds of quiet between them.
+    /// Used when a long pause turned out to be the speaker thinking: the speech model then hears one unbroken phrase
+    /// and does not write a full stop at a pause that is no longer there.
+    public static func stitch(_ samples: [Float], _ ranges: [Range<Int>], gap: Double = 0.25) -> [Float] {
+        let spacer = [Float](repeating: 0, count: Int(gap * Double(sampleRate)))
+        var joined: [Float] = []
+        for (i, range) in ranges.enumerated() {
+            if i > 0 { joined += spacer }
+            joined += samples[range]
+        }
+        return joined
     }
 
     private static func loudness(of samples: [Float]) -> [Float] {
@@ -103,13 +128,48 @@ public enum SentenceJoiner {
         "a", "an", "the", "and", "or", "but", "because", "if", "of", "to", "in", "on", "at", "for", "with", "from",
         "by", "into", "my", "your", "our", "their", "his", "its", "which", "who", "is", "are", "was", "were", "will",
         "would", "can", "could", "should", "has", "had",
+        "may", "might", "must", "shall", "than", "as", "like", "between", "during", "within", "without", "per", "via",
+        // A speaker's "I" or "we" on its own, or "I'm" and "we're", is waiting for a verb.
+        "i", "we", "they", "he", "she", "i'm", "i'll", "i've", "i'd", "we're", "we'll", "we've", "we'd", "you're",
+        "you'll", "you've", "you'd", "they're", "they'll", "they've", "it's", "that's", "there's", "here's", "he's",
+        "she's", "what's", "let's",
     ]
 
-    /// True when the text stops in the middle of a sentence (its last word cannot end one).
+    /// Verbs that need something after them ("generate reports", "send it"). They almost never end a sentence.
+    private static let needsObject: Set<String> = [
+        "generate", "create", "provide", "include", "require", "develop", "deliver", "prepare", "make", "write", "give",
+        "tell", "bring", "put", "send", "add", "attach", "share",
+    ]
+
+    /// Words that open a condition ("If you have any questions"), which needs a second half.
+    private static let conditionOpeners: Set<String> = [
+        "if", "when", "once", "because", "although", "though", "while", "unless", "until", "whenever", "whereas",
+    ]
+
+    /// True when the text stops in the middle of a sentence: the model left a comma, semicolon or colon at the end,
+    /// the last word cannot end a sentence, or the last sentence is a condition with no second half.
     public static func endsMidSentence(_ text: String) -> Bool {
-        let last = text.split(whereSeparator: { !($0.isLetter || $0 == "'" || $0 == "\u{2019}") }).last
-        guard let word = last else { return false }
-        return neverLast.contains(word.lowercased())
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let last = trimmed.last, ",;:".contains(last) { return true }
+        if let word = words(in: trimmed).last {
+            let normalized = word.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
+            if neverLast.contains(normalized) || needsObject.contains(normalized) { return true }
+        }
+        return hasConditionWithoutResult(trimmed)
+    }
+
+    /// "If you have any questions." on its own: starts with "if", "when" and so on, is short, and has no comma where the second half would start.
+    private static func hasConditionWithoutResult(_ text: String) -> Bool {
+        guard let end = text.last, !"?!".contains(end) else { return false }
+        let lastSentence = text.split(whereSeparator: { ".?!".contains($0) }).last.map(String.init) ?? text
+        guard !lastSentence.contains(",") else { return false }
+        let found = words(in: lastSentence)
+        guard (3...10).contains(found.count), let first = found.first else { return false }
+        return conditionOpeners.contains(first.lowercased())
+    }
+
+    private static func words(in text: String) -> [Substring] {
+        text.split(whereSeparator: { !($0.isLetter || $0 == "'" || $0 == "\u{2019}") })
     }
 
     /// Joins pieces with a space, or with a blank line when the silence before a piece was `paragraphPause` seconds or more.

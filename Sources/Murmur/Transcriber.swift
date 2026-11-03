@@ -71,14 +71,17 @@ actor Transcriber {
         var index = 0
         while index < segments.count {
             var segment = segments[index]
+            var talking = [segment.speech]
             var text = try await transcribe(Array(samples[segment.range]))
-            // A piece that stops on "to" or "the" means the speaker was only thinking. Hear it together with what follows.
+            // A piece that stops on "to" or "the", or on a condition with no second half, means the speaker was only thinking.
+            // Hear it together with what follows, with the long pause squeezed short so the model does not write a full stop there.
             while index + 1 < segments.count, SentenceJoiner.endsMidSentence(text) {
                 index += 1
+                talking.append(segments[index].speech)
                 segment = SpeechSegment(
                     range: segment.range.lowerBound..<segments[index].range.upperBound,
                     silenceBefore: segment.silenceBefore)
-                text = try await transcribe(Array(samples[segment.range]))
+                text = try await transcribe(SilenceSplitter.stitch(samples, talking))
             }
             pieces.append(Dictation.Piece(
                 start: Double(segment.range.lowerBound) / rate, end: Double(segment.range.upperBound) / rate,

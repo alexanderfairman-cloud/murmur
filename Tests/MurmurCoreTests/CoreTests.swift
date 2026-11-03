@@ -179,6 +179,57 @@ struct PauseBreakTests {
         #expect(!SentenceJoiner.endsMidSentence("Ready"))
         #expect(!SentenceJoiner.endsMidSentence(""))
     }
+
+    @Test func spotsAVerbWaitingForItsObject() {
+        #expect(SentenceJoiner.endsMidSentence("That's where you'll also be able to generate."))
+        #expect(SentenceJoiner.endsMidSentence("I want to send"))
+        #expect(SentenceJoiner.endsMidSentence("I'm imagining things like."))
+        #expect(!SentenceJoiner.endsMidSentence("Let me know."))
+        #expect(!SentenceJoiner.endsMidSentence("Thank you."))
+    }
+
+    @Test func spotsASubjectOrContractionWaitingForItsVerb() {
+        #expect(SentenceJoiner.endsMidSentence("I know you said so and I"))
+        #expect(SentenceJoiner.endsMidSentence("Great, and I\u{2019}m"))
+        #expect(SentenceJoiner.endsMidSentence("We said that we\u{2019}re."))
+        #expect(!SentenceJoiner.endsMidSentence("I think so."))
+    }
+
+    @Test func aCommaOrColonAtTheEndMeansMoreIsComing() {
+        #expect(SentenceJoiner.endsMidSentence("Hello there,"))
+        #expect(SentenceJoiner.endsMidSentence("Here is the list:"))
+        #expect(SentenceJoiner.endsMidSentence("It was late;"))
+    }
+
+    @Test func spotsAConditionWithNoSecondHalf() {
+        #expect(SentenceJoiner.endsMidSentence("If you have any questions."))
+        #expect(SentenceJoiner.endsMidSentence("If you have any questions"))
+        #expect(SentenceJoiner.endsMidSentence("I said yes. When you are ready to go."))
+        #expect(!SentenceJoiner.endsMidSentence("If you have any questions, I am here."))
+        #expect(!SentenceJoiner.endsMidSentence("When is the meeting?"))
+        #expect(!SentenceJoiner.endsMidSentence("If so."))
+        #expect(!SentenceJoiner.endsMidSentence(
+            "If you want this done by Friday and you want it to be right then please tell me what you think about all of it today."))
+    }
+
+    @Test func theSpeechOfEachPieceLeavesOutTheQuietBetweenThem() {
+        let parts = SilenceSplitter().split(speech(1.0) + quiet(2.0) + speech(1.0))
+        #expect(parts.count == 2)
+        // A piece's range keeps half of the quiet on each side; its speech keeps only a little padding.
+        #expect(parts[0].speech.count < parts[0].range.count)
+        #expect(Double(parts[0].speech.count) / Double(rate) < 1.4)
+        #expect(Double(parts[1].speech.count) / Double(rate) < 1.4)
+        #expect(parts[0].speech.upperBound < parts[1].speech.lowerBound)
+    }
+
+    @Test func stitchingKeepsOnlyAShortGapBetweenPieces() {
+        let audio = speech(1.0) + quiet(2.0) + speech(1.0)
+        let parts = SilenceSplitter().split(audio)
+        let joined = SilenceSplitter.stitch(audio, parts.map(\.speech), gap: 0.25)
+        let seconds = Double(joined.count) / Double(rate)
+        #expect(seconds < 2.7)
+        #expect(seconds > 2.2)
+    }
 }
 
 @Suite("Words and history lists")
@@ -573,6 +624,20 @@ struct SentenceSmootherTests {
                 == "Sam, what a cool name you have, and Lee shared wonderful things about you.")
         #expect(s("I like the design. But the colors are off.") == "I like the design, but the colors are off.")
         #expect(s("We could go now. Or we could wait.") == "We could go now, or we could wait.")
+    }
+
+    @Test func joinsBecauseAndWhichToTheSentenceBefore() {
+        #expect(s("We do have one built. Because it was needed.") == "We do have one built, because it was needed.")
+        #expect(s("It took a week. Which means we are late.") == "It took a week, which means we are late.")
+    }
+
+    @Test func leavesQuestionsAndNewSentencesAlone() {
+        #expect(s("Thanks. Which one do you want?") == "Thanks. Which one do you want?")
+        #expect(s("Thanks. So what now?") == "Thanks. So what now?")
+        // In real dictations "So I" and "So we" usually start a new sentence, so "So" is never joined.
+        #expect(s("I like it. So I think we should go.") == "I like it. So I think we should go.")
+        #expect(s("Done. So, what is next?") == "Done. So, what is next?")
+        #expect(s("Why is that? Because it is late.") == "Why is that? Because it is late.")
     }
 
     @Test func handlesSeveralInOneDictation() {
