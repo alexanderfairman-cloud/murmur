@@ -596,3 +596,64 @@ struct SentenceSmootherTests {
                 == "What a cool name you have, and email me at janedoe@gmail.com.")
     }
 }
+
+@Suite("Spoken punctuation")
+struct SpokenPunctuationTests {
+    private func p(_ text: String) -> String { SpokenPunctuation.apply(text) }
+
+    @Test func aSpokenCommaBecomesAComma() {
+        // The model writes its own commas around the word, so those must not double up.
+        #expect(
+            p("Hey John, great to see you, comma, hoping that we can get together soon.")
+                == "Hey John, great to see you, hoping that we can get together soon.")
+        #expect(p("great to see you comma hoping that we can go") == "great to see you, hoping that we can go")
+        #expect(p("Given the speedy mode comma, we need a button.") == "Given the speedy mode, we need a button.")
+    }
+
+    @Test func aCommaAfterTheModelEndedTheSentenceEarly() {
+        #expect(
+            p("Install this on your computer. Comma, it's better than the old one.")
+                == "Install this on your computer, it's better than the old one.")
+    }
+
+    @Test func aSpokenPeriodBecomesAFullStopAndCapitalizesWhatFollows() {
+        #expect(
+            p("Sam, I think this is an amazing idea, period. Let's get together next week.")
+                == "Sam, I think this is an amazing idea. Let's get together next week.")
+        #expect(p("That is great, period, let's meet on Friday.") == "That is great. Let's meet on Friday.")
+        #expect(p("That is great period let's meet on Friday.") == "That is great. Let's meet on Friday.")
+    }
+
+    @Test func aPeriodAtTheEnd() {
+        #expect(p("I think this is great, period.") == "I think this is great.")
+        #expect(p("I think this is great period") == "I think this is great.")
+    }
+
+    @Test func aParagraphBreakAfterAPeriodStays() {
+        #expect(p("It is done, period.\n\nNext we ship.") == "It is done.\n\nNext we ship.")
+    }
+
+    @Test func severalInOneDictation() {
+        #expect(
+            p("Thanks John, comma, I loved it, period. See you soon, comma, my friend, period.")
+                == "Thanks John, I loved it. See you soon, my friend.")
+    }
+
+    @Test func theWordsUsedAsNounsAreLeftAlone() {
+        #expect(p("We have a trial period of thirty days.") == "We have a trial period of thirty days.")
+        #expect(p("During this period we shipped twice.") == "During this period we shipped twice.")
+        #expect(p("That was a long period.") == "That was a long period.")
+        #expect(p("Add the comma after the name.") == "Add the comma after the name.")
+        #expect(p("Use an Oxford comma.") == "Use an Oxford comma.")
+        #expect(p("The word comma means a pause.") == "The word comma means a pause.")
+        #expect(p("The period of rest ended.") == "The period of rest ended.")
+        #expect(p("It is comma-separated.") == "It is comma-separated.")
+        #expect(p("Two periods and three commas.") == "Two periods and three commas.")
+    }
+
+    @Test func worksInTheFullPipeline() {
+        #expect(
+            SpokenText.tidy("Um, hey John, great to see you, comma, hoping we can meet, period. Let's go.")
+                == "Hey John, great to see you, hoping we can meet. Let's go.")
+    }
+}
