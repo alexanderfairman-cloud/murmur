@@ -123,53 +123,9 @@ public struct SilenceSplitter {
 
 /// Puts the separately transcribed pieces back together as sentences and paragraphs.
 public enum SentenceJoiner {
-    /// Words that almost never end a sentence. If a piece stops on one, the speaker was only thinking, not finished.
-    private static let neverLast: Set<String> = [
-        "a", "an", "the", "and", "or", "but", "because", "if", "of", "to", "in", "on", "at", "for", "with", "from",
-        "by", "into", "my", "your", "our", "their", "his", "its", "which", "who", "is", "are", "was", "were", "will",
-        "would", "can", "could", "should", "has", "had",
-        "may", "might", "must", "shall", "than", "as", "like", "between", "during", "within", "without", "per", "via",
-        // A speaker's "I" or "we" on its own, or "I'm" and "we're", is waiting for a verb.
-        "i", "we", "they", "he", "she", "i'm", "i'll", "i've", "i'd", "we're", "we'll", "we've", "we'd", "you're",
-        "you'll", "you've", "you'd", "they're", "they'll", "they've", "it's", "that's", "there's", "here's", "he's",
-        "she's", "what's", "let's",
-    ]
-
-    /// Verbs that need something after them ("generate reports", "send it"). They almost never end a sentence.
-    private static let needsObject: Set<String> = [
-        "generate", "create", "provide", "include", "require", "develop", "deliver", "prepare", "make", "write", "give",
-        "tell", "bring", "put", "send", "add", "attach", "share",
-    ]
-
-    /// Words that open a condition ("If you have any questions"), which needs a second half.
-    private static let conditionOpeners: Set<String> = [
-        "if", "when", "once", "because", "although", "though", "while", "unless", "until", "whenever", "whereas",
-    ]
-
-    /// True when the text stops in the middle of a sentence: the model left a comma, semicolon or colon at the end,
-    /// the last word cannot end a sentence, or the last sentence is a condition with no second half.
+    /// True when the text stops in the middle of a sentence. See `SentenceCompleteness`.
     public static func endsMidSentence(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let last = trimmed.last, ",;:".contains(last) { return true }
-        if let word = words(in: trimmed).last {
-            let normalized = word.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
-            if neverLast.contains(normalized) || needsObject.contains(normalized) { return true }
-        }
-        return hasConditionWithoutResult(trimmed)
-    }
-
-    /// "If you have any questions." on its own: starts with "if", "when" and so on, is short, and has no comma where the second half would start.
-    private static func hasConditionWithoutResult(_ text: String) -> Bool {
-        guard let end = text.last, !"?!".contains(end) else { return false }
-        let lastSentence = text.split(whereSeparator: { ".?!".contains($0) }).last.map(String.init) ?? text
-        guard !lastSentence.contains(",") else { return false }
-        let found = words(in: lastSentence)
-        guard (3...10).contains(found.count), let first = found.first else { return false }
-        return conditionOpeners.contains(first.lowercased())
-    }
-
-    private static func words(in text: String) -> [Substring] {
-        text.split(whereSeparator: { !($0.isLetter || $0 == "'" || $0 == "\u{2019}") })
+        SentenceCompleteness.isUnfinished(text)
     }
 
     /// Joins pieces with a space, or with a blank line when the silence before a piece was `paragraphPause` seconds or more.

@@ -722,3 +722,118 @@ struct SpokenPunctuationTests {
                 == "Hey John, great to see you, hoping we can meet. Let's go.")
     }
 }
+
+@Suite("Sentence completeness")
+struct SentenceCompletenessTests {
+    private func open(_ text: String) -> Bool { SentenceCompleteness.isUnfinished(text) }
+
+    @Test func theThreePiecesThatWereCutAtThinkingPauses() {
+        #expect(open("We should really delineate between events and triggers because to me."))
+        #expect(open("A trigger is based on conditional logic, whereas an event is simply."))
+        #expect(!open("An occurrence that has a timestamp on it."))
+    }
+
+    @Test func aClauseNeedsAVerb() {
+        #expect(open("It works because"))
+        #expect(open("Call me if you"))
+        #expect(open("We left since it"))
+        #expect(!open("We left because it was late."))
+        #expect(!open("It works because of this."))
+        #expect(!open("Do it when I say so."))
+    }
+
+    @Test func hangingAdverbsAndHelpingVerbs() {
+        #expect(open("The reason is basically"))
+        #expect(open("It was really"))
+        #expect(open("That is what it should"))
+        #expect(!open("Here is the plan."))
+        #expect(!open("That is what I mean."))
+    }
+
+    @Test func numbersAndAbbreviationsCountAsWords() {
+        #expect(!open("We met in L.A."))
+        #expect(!open("It happened in January of 2026."))
+        #expect(!open("It costs 3.5"))
+        #expect(open("It costs less than"))
+    }
+
+    @Test func finishedSentencesAreLeftAlone() {
+        for done in [
+            "I think we should ship it.", "Thank you.", "Let me know.", "Is that right?", "What a day!", "That works for me.",
+            "We talked about the plan.", "He said it was fine.", "I will send it to you.",
+        ] { #expect(!open(done), Comment(rawValue: done)) }
+    }
+
+    @Test func aPieceThatOpensWithAnObjectCarriesOnFromTheOneBefore() {
+        #expect(SentenceCompleteness.carriesOnFromBefore("Of the whole plan."))
+        #expect(SentenceCompleteness.carriesOnFromBefore("Into the system."))
+        #expect(SentenceCompleteness.carriesOnFromBefore("About the report."))
+        #expect(!SentenceCompleteness.carriesOnFromBefore("Of course, yes."))
+        #expect(!SentenceCompleteness.carriesOnFromBefore("The plan is ready."))
+        #expect(!SentenceCompleteness.carriesOnFromBefore(""))
+    }
+
+    @Test func twoPiecesJoinWhenEitherSideDemandsIt() {
+        #expect(SentenceCompleteness.joins("A trigger is simply.", "An occurrence."))
+        #expect(SentenceCompleteness.joins("We tested the build.", "Of the whole plan."))
+        #expect(!SentenceCompleteness.joins("We tested the build.", "Then we shipped it."))
+    }
+}
+
+@Suite("Sentence repair")
+struct SentenceRepairTests {
+    private func r(_ text: String) -> String { SentenceRepair.apply(text) }
+
+    @Test func joinsASentenceThatStoppedMidThought() {
+        #expect(
+            r("A trigger is based on conditional logic, whereas an event is simply. An occurrence that has a timestamp on it.")
+                == "A trigger is based on conditional logic, whereas an event is simply an occurrence that has a timestamp on it.")
+        #expect(
+            r("That's where you'll also be able to generate. Group reports and see the full functionality.")
+                == "That's where you'll also be able to generate group reports and see the full functionality.")
+    }
+
+    @Test func aConditionTakesAComma() {
+        #expect(
+            r("If you have any questions. I'm here and would love to have a call.")
+                == "If you have any questions, I'm here and would love to have a call.")
+    }
+
+    @Test func joinsSeveralInARow() {
+        #expect(
+            r("We left because to me. A trigger is simply. An occurrence.")
+                == "We left because to me a trigger is simply an occurrence.")
+    }
+
+    @Test func keepsCapitalsThatAreReal() {
+        #expect(r("If you have questions. I am here.") == "If you have questions, I am here.")
+        #expect(r("We should generate. HQ reports.") == "We should generate HQ reports.")
+        #expect(r("The gap is between. Monday and Friday.") == "The gap is between Monday and Friday.")
+    }
+
+    @Test func aRealSentenceCanEndOnASmallWord() {
+        // Said aloud, "hooked up to" and "model would" really do end sentences, and the next one is a new thought or a name.
+        #expect(r("These are the services we are hooked up to. So we want to see them.") == "These are the services we are hooked up to. So we want to see them.")
+        #expect(r("I wanted to. I think it works.") == "I wanted to. I think it works.")
+    }
+
+    @Test func abbreviationsNumbersAndTrailingDotsAreNotSentenceEnds() {
+        #expect(r("The event is in L.A. Either before or after.") == "The event is in L.A. Either before or after.")
+        #expect(r("It happened in January of 2026. Everybody came.") == "It happened in January of 2026. Everybody came.")
+        #expect(r("If we all... While it is corrupt, yes.") == "If we all... While it is corrupt, yes.")
+    }
+
+    @Test func leavesFinishedSentencesAndRealBreaksAlone() {
+        #expect(r("I like it. Then we ship.") == "I like it. Then we ship.")
+        #expect(r("We know the answer. So I'm here.") == "We know the answer. So I'm here.")
+        #expect(r("It was really. \n\nNext") == "It was really. \n\nNext")
+        #expect(r("Is it simply? An occurrence.") == "Is it simply? An occurrence.")
+        #expect(r("Done.\n\nA new start.") == "Done.\n\nA new start.")
+    }
+
+    @Test func worksInTheFullPipeline() {
+        #expect(
+            SpokenText.tidy("Um, an event is simply. An occurrence that has a timestamp. And that is all.")
+                == "An event is simply an occurrence that has a timestamp, and that is all.")
+    }
+}

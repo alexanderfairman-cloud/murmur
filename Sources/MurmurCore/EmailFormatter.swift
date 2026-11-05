@@ -226,6 +226,6 @@ public enum SpokenText {
     public static func tidy(_ raw: String, removeFillers: Bool = true) -> String {
         let cleaner = TextCleaner()
         let cleaned = removeFillers ? cleaner.clean(raw) : cleaner.trimmed(raw)
-        return EmailFormatter.format(SentenceSmoother.smooth(SpokenPunctuation.apply(cleaned)))
+        return EmailFormatter.format(SentenceSmoother.smooth(SentenceRepair.apply(SpokenPunctuation.apply(cleaned))))
     }
 }

@@ -67,15 +67,18 @@ actor Transcriber {
         }
 
         let rate = Double(Self.sampleRate)
+        var alone: [String] = []
+        for segment in segments { alone.append(try await transcribe(Array(samples[segment.range]))) }
         var pieces: [Dictation.Piece] = []
         var index = 0
         while index < segments.count {
             var segment = segments[index]
             var talking = [segment.speech]
-            var text = try await transcribe(Array(samples[segment.range]))
-            // A piece that stops on "to" or "the", or on a condition with no second half, means the speaker was only thinking.
-            // Hear it together with what follows, with the long pause squeezed short so the model does not write a full stop there.
-            while index + 1 < segments.count, SentenceJoiner.endsMidSentence(text) {
+            var text = alone[index]
+            // A piece that cannot end a sentence where it stops ("an event is simply", "because to me"), or a next piece that cannot
+            // start one ("of the plan"), means the speaker was only thinking (see SentenceCompleteness). Hear both together, with the
+            // long pause squeezed short so the model does not write a full stop at a pause that is no longer there.
+            while index + 1 < segments.count, SentenceCompleteness.joins(text, alone[index + 1]) {
                 index += 1
                 talking.append(segments[index].speech)
                 segment = SpeechSegment(

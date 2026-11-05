@@ -97,15 +97,17 @@ say -v Samantha -o "$TMP/pause-b.aiff" "I would like to[[slnc 1300]]talk about t
 say -v Samantha -o "$TMP/pause-c.aiff" "I think we should[[slnc 500]]ship it on Friday if the tests pass"
 A="$("$BIN" --transcribe "$TMP/pause-a.aiff")"
 B="$("$BIN" --transcribe "$TMP/pause-b.aiff")"
-# Thinking pauses after a verb and after a condition: no full stop and no capital letter there.
+# Thinking pauses after a verb, after a condition and mid-clause ("because to me", "is simply"): no full stop and no capital letter there.
 say -v Samantha -o "$TMP/pause-d.aiff" "That's where you'll also be able to generate[[slnc 1300]]group reports and see the full functionality of what we've built"
 say -v Samantha -o "$TMP/pause-e.aiff" "If you have any questions[[slnc 1300]]I'm here and would love to have a call or a check in any time"
 C="$("$BIN" --transcribe "$TMP/pause-c.aiff")"
 D="$("$BIN" --transcribe "$TMP/pause-d.aiff")"
 E="$("$BIN" --transcribe "$TMP/pause-e.aiff")"
-python3 -I - "$A" "$B" "$C" "$D" "$E" <<'PY'
+say -v Samantha -o "$TMP/pause-f.aiff" "We should really delineate between events and triggers because to me[[slnc 2600]]a trigger is based on conditional logic whereas an event is simply[[slnc 2600]]an occurrence that has a timestamp on it"
+F="$("$BIN" --transcribe "$TMP/pause-f.aiff")"
+python3 -I - "$A" "$B" "$C" "$D" "$E" "$F" <<'PY'
 import json, sys
-a, b, c, d, e = (json.loads(x)["text"] for x in sys.argv[1:6])
+a, b, c, d, e, f = (json.loads(x)["text"] for x in sys.argv[1:7])
 problems = []
 # 1.2 s of quiet ends a sentence, 2.6 s starts a paragraph
 if "every day." not in a: problems.append("1.2 s pause did not end the sentence")
@@ -117,6 +119,9 @@ if "should." in c or "\n" in c or "should ship" not in c: problems.append("0.5 s
 # a pause after "generate" or inside "If you have any questions" is only thinking
 if "generate." in d or "Group" in d or "generate group" not in d: problems.append("a pause after a verb became a full stop: " + repr(d))
 if "questions." in e or "questions," not in e: problems.append("a condition was cut from its second half: " + repr(e))
+# three 2.6 s pauses inside one thought stay one sentence: no full stop, no blank line, no capital letter in the middle
+if "\n" in f or "to me." in f or "simply." in f or "A trigger" in f or "An occurrence" in f or "simply an occurrence" not in f:
+    problems.append("a thought with long thinking pauses was cut into pieces: " + repr(f))
 if problems:
     print("FAIL:", "; ".join(problems)); sys.exit(1)
 print("PASS: sentence break, paragraph break, unfinished sentence, short pause and thinking pauses all handled")
