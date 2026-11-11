@@ -298,10 +298,15 @@ enum CLI {
                 // The app stays running, so what matters is the speed after warm-up. Time five runs and report the middle one.
                 var heard = Dictation(text: "", pieces: [])
                 var timings: [Int] = []
+                var runs = 0
+                var modelSeconds = 0.0
                 for _ in 0..<5 {
+                    let runsBefore = await transcriber.modelRuns, secondsBefore = await transcriber.modelSeconds
                     let start = Date()
                     heard = try await transcriber.dictate(samples, rules: PauseRules(enabled: pauses))
                     timings.append(Int(Date().timeIntervalSince(start) * 1000))
+                    runs = await transcriber.modelRuns - runsBefore
+                    modelSeconds = await transcriber.modelSeconds - secondsBefore
                 }
                 let raw = heard.text
                 // How the recording was cut at pauses, for tuning the pause rules on a real voice.
@@ -329,6 +334,8 @@ enum CLI {
                     "audioSeconds": (Double(samples.count) / 16_000 * 100).rounded() / 100,
                     "transcribeMs": ms,
                     "allRunsMs": timings,
+                    "modelRuns": runs,
+                    "modelSeconds": (modelSeconds * 10).rounded() / 10,
                     "pieces": pieces,
                     "modelLoadSeconds": (loadSeconds * 10).rounded() / 10,
                 ]

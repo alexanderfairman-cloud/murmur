@@ -76,7 +76,9 @@ public struct DictionaryCorrector {
                     match = (size, written)
                     break
                 }
-                if size <= 2, !hasAddress, !isKnownWord(joined), let written = Self.nearest(joined, in: fuzzy) {
+                // The spell checker is the slow part (about 1.5 ms a call, so over two seconds on a 700-word dictation): it is asked only
+                // about a word that is already a near miss of something in the dictionary, which is almost never.
+                if size <= 2, !hasAddress, let written = Self.nearest(joined, in: fuzzy), !isKnownWord(joined) {
                     match = (size, written)
                     break
                 }

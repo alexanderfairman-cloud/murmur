@@ -43,6 +43,20 @@ struct DictionaryCorrectorTests {
         DictionaryCorrector(entries: Self.entries, isKnownWord: { known.contains($0) })
     }
 
+    /// The spell checker costs about 1.5 ms a call. It must be asked only about words that are close to a dictionary word,
+    /// not about every word of a long dictation.
+    @Test func spellCheckerIsAskedOnlyAboutNearMisses() {
+        final class Asked: @unchecked Sendable { var words: [String] = [] }
+        let asked = Asked()
+        let corrector = DictionaryCorrector(entries: Self.entries, isKnownWord: { asked.words.append($0); return false })
+        let text = "We should really delineate between events and triggers because to me a trigger is based on conditional logic."
+        #expect(corrector.apply(to: text).text == text)
+        #expect(asked.words.isEmpty)
+        // A real near miss of a dictionary word is still checked, and still fixed when it is not a real word.
+        #expect(corrector.apply(to: "I deployed it on Vercell").text == "I deployed it on Vercel")
+        #expect(asked.words.contains("vercell"))
+    }
+
     @Test func usesHeardAsSpellings() {
         let r = corrector().apply(to: "I use clawed code every day.")
         #expect(r.text == "I use Claude Code every day.")
@@ -777,6 +791,23 @@ struct SentenceCompletenessTests {
         #expect(SentenceCompleteness.joins("A trigger is simply.", "An occurrence."))
         #expect(SentenceCompleteness.joins("We tested the build.", "Of the whole plan."))
         #expect(!SentenceCompleteness.joins("We tested the build.", "Then we shipped it."))
+    }
+
+    @Test func runsGroupPiecesThatAreOneSentence() {
+        // The pasted case: all three pieces are one thought, so one run, heard together once.
+        #expect(SentenceCompleteness.runs(of: [
+            "We should really delineate between events and triggers because to me.",
+            "A trigger is based on conditional logic, whereas an event is simply.",
+            "An occurrence that has a timestamp on it.",
+        ]) == [0..<3])
+        // Pieces that each stand alone stay separate.
+        #expect(SentenceCompleteness.runs(of: ["We tested the build.", "Then we shipped it.", "Everyone was happy."]) == [0..<1, 1..<2, 2..<3])
+        // A piece that cannot open a sentence joins the one before it, and only that one.
+        #expect(SentenceCompleteness.runs(of: ["We tested the build.", "Of the whole plan.", "Then we shipped it."]) == [0..<2, 2..<3])
+        // The run is judged on how the pieces read together: "because" and "to me." is a clause with no verb.
+        #expect(SentenceCompleteness.runs(of: ["It matters because.", "To me.", "A trigger is a rule."]) == [0..<3])
+        #expect(SentenceCompleteness.runs(of: []) == [])
+        #expect(SentenceCompleteness.runs(of: ["Just one piece."]) == [0..<1])
     }
 }
 

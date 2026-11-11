@@ -67,6 +67,9 @@ for needle in ("claude code", "supabase", "every day", "ship it", "friday"):
         problems.append(f"missing '{needle}'")
 if r["transcribeMs"] > 600:  # about 120 ms on an M2 Pro; the Neural Engine path would be 600+
     problems.append(f"too slow: {r['transcribeMs']} ms for {r['audioSeconds']} s of audio")
+# A recording with no long pause must go to the model once, whole: no extra listens.
+if r["modelRuns"] != 1 or r["modelSeconds"] > r["audioSeconds"] + 0.5:
+    problems.append(f"a plain sentence cost {r['modelRuns']} model runs and {r['modelSeconds']} s of audio for {r['audioSeconds']} s")
 if problems:
     print("FAIL:", "; ".join(problems)); sys.exit(1)
 print(f"PASS: {r['transcribeMs']} ms for {r['audioSeconds']} s of audio (on this Mac, speech model from disk)")
@@ -108,7 +111,12 @@ F="$("$BIN" --transcribe "$TMP/pause-f.aiff")"
 python3 -I - "$A" "$B" "$C" "$D" "$E" "$F" <<'PY'
 import json, sys
 a, b, c, d, e, f = (json.loads(x)["text"] for x in sys.argv[1:7])
+work = json.loads(sys.argv[6])
 problems = []
+# The work the speech model does is counted, not timed (a stopwatch wobbles with how busy the Mac is). Three pieces that are one
+# thought cost one listen each plus one together: 4 runs and under 1.9 times the recording. The first version of this cost 5 runs and 2.2 times.
+if work["modelRuns"] > 4 or work["modelSeconds"] > 1.9 * work["audioSeconds"]:
+    problems.append(f"too much model work for one thought: {work['modelRuns']} runs, {work['modelSeconds']} s of audio for {work['audioSeconds']} s")
 # 1.2 s of quiet ends a sentence, 2.6 s starts a paragraph
 if "every day." not in a: problems.append("1.2 s pause did not end the sentence")
 if a.count("\n\n") != 1 or "Friday.\n\nPlease" not in a: problems.append("2.6 s pause did not make exactly one paragraph break")

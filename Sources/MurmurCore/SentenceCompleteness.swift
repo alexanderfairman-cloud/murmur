@@ -133,6 +133,29 @@ public enum SentenceCompleteness {
         isUnfinished(left) || carriesOnFromBefore(right)
     }
 
+    /// Groups consecutive pieces, as the model wrote each one when it heard it alone, into the runs that are really one sentence.
+    /// Every piece is in exactly one run, in order; a run of one piece is a piece that stands by itself.
+    public static func runs(of alone: [String]) -> [Range<Int>] {
+        var runs: [Range<Int>] = []
+        var start = 0
+        while start < alone.count {
+            var end = start + 1
+            while end < alone.count, joins(runOn(alone[start..<end]), alone[end]) { end += 1 }
+            runs.append(start..<end)
+            start = end
+        }
+        return runs
+    }
+
+    /// Pieces written one after another the way the model would write them with no pause between: each full stop that only
+    /// closed a piece is dropped, so "because" and "to me." read as "because to me".
+    private static func runOn(_ pieces: ArraySlice<String>) -> String {
+        pieces.map { piece in
+            let text = piece.trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.hasSuffix(".") && !text.hasSuffix("..") ? String(text.dropLast()) : text
+        }.joined(separator: " ")
+    }
+
     /// "because to me": a clause opener followed only by words that cannot be a verb.
     private static func clauseHasNoPredicate(_ found: [String]) -> Bool {
         guard let at = found.lastIndex(where: { clauseOpeners.contains($0) }) else { return false }

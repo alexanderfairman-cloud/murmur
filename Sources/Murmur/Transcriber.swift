@@ -33,6 +33,11 @@ actor Transcriber {
 
     var isReady: Bool { manager != nil }
 
+    /// How much work the speech model has done: runs, and seconds of audio fed to it. A check can count the work a recording
+    /// costs, which does not wobble with how busy the Mac is the way a stopwatch does.
+    private(set) var modelRuns = 0
+    private(set) var modelSeconds = 0.0
+
     /// `progress` is told the fraction done (0 to 1) and whether we are in the download step.
     func load(progress: @escaping @Sendable (_ fraction: Double, _ downloading: Bool) -> Void) async throws {
         guard manager == nil else { return }
@@ -66,30 +71,25 @@ actor Transcriber {
             return Dictation(text: try await transcribe(samples), pieces: [])
         }
 
+        // Every piece is heard alone, with the quiet on each side of it (half of each pause). Cutting that quiet away saves model
+        // time but costs commas: "First, we need" becomes "First we need", because the model uses the quiet to hear where a phrase ends.
         let rate = Double(Self.sampleRate)
         var alone: [String] = []
         for segment in segments { alone.append(try await transcribe(Array(samples[segment.range]))) }
+
+        // Pieces that cannot end a sentence where they stop ("an event is simply", "because to me"), or that cannot start one
+        // ("of the plan"), mean the speaker was only thinking (see SentenceCompleteness). Each such run of pieces is heard once
+        // more, all together, with the long pauses squeezed short, so the model writes one sentence instead of a full stop at each
+        // pause. One extra listen per run, however many pieces it has.
         var pieces: [Dictation.Piece] = []
-        var index = 0
-        while index < segments.count {
-            var segment = segments[index]
-            var talking = [segment.speech]
-            var text = alone[index]
-            // A piece that cannot end a sentence where it stops ("an event is simply", "because to me"), or a next piece that cannot
-            // start one ("of the plan"), means the speaker was only thinking (see SentenceCompleteness). Hear both together, with the
-            // long pause squeezed short so the model does not write a full stop at a pause that is no longer there.
-            while index + 1 < segments.count, SentenceCompleteness.joins(text, alone[index + 1]) {
-                index += 1
-                talking.append(segments[index].speech)
-                segment = SpeechSegment(
-                    range: segment.range.lowerBound..<segments[index].range.upperBound,
-                    silenceBefore: segment.silenceBefore)
-                text = try await transcribe(SilenceSplitter.stitch(samples, talking))
-            }
+        for run in SentenceCompleteness.runs(of: alone) {
+            let first = segments[run.lowerBound], last = segments[run.upperBound - 1]
+            let text = run.count == 1
+                ? alone[run.lowerBound]
+                : try await transcribe(SilenceSplitter.stitch(samples, run.map { segments[$0].speech }))
             pieces.append(Dictation.Piece(
-                start: Double(segment.range.lowerBound) / rate, end: Double(segment.range.upperBound) / rate,
-                silenceBefore: segment.silenceBefore, text: text))
-            index += 1
+                start: Double(first.range.lowerBound) / rate, end: Double(last.range.upperBound) / rate,
+                silenceBefore: first.silenceBefore, text: text))
         }
         let joined = SentenceJoiner.join(pieces.map { ($0.text, $0.silenceBefore) }, paragraphPause: rules.paragraphPause)
         return Dictation(text: joined, pieces: pieces)
@@ -102,6 +102,8 @@ actor Transcriber {
         if audio.count < Self.sampleRate {
             audio.append(contentsOf: repeatElement(0, count: Self.sampleRate - audio.count))
         }
+        modelRuns += 1
+        modelSeconds += Double(audio.count) / Double(Self.sampleRate)
         var state = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
         return try await manager.transcribe(audio, decoderState: &state).text
     }

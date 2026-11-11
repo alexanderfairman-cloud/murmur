@@ -226,7 +226,8 @@ final class DictationController {
                 return
             }
             let typed = settings().trailingSpace ? text + " " : text
-            let pasted = await TextInjector.insert(typed)
+            // The text is on screen the moment it is pasted. The pill used to stay up for the 0.6 s it takes to put your clipboard back.
+            let pasted = await TextInjector.insert(typed, afterPaste: { self.hideIfIdle() })
             lastText = text
             history.append(HistoryItem(
                 text: text, rawText: raw, audioSeconds: seconds, transcribeMs: ms, app: app, appID: appID,

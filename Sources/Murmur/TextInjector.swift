@@ -10,8 +10,9 @@ enum TextInjector {
     /// Types `text` at the cursor of whatever app is in front by pasting it, then puts your clipboard back.
     /// Pasting works in every app, including Electron ones (Cursor, Slack, VS Code) where direct typing silently fails.
     /// Returns false when macOS will not let Murmur press the paste keys; the text is then left on the clipboard.
+    /// `afterPaste` runs the moment the paste key is pressed, so the caller can stop showing "thinking" while the clipboard is put back.
     @MainActor
-    static func insert(_ text: String) async -> Bool {
+    static func insert(_ text: String, afterPaste: () -> Void = {}) async -> Bool {
         let pasteboard = NSPasteboard.general
         let saved = snapshot(pasteboard)
 
@@ -23,6 +24,7 @@ enum TextInjector {
 
         guard AXIsProcessTrusted() else { return false }
         pressCommandV()
+        afterPaste()
 
         // Give the app a moment to read the clipboard, then put yours back, unless you copied something new meanwhile.
         try? await Task.sleep(for: .milliseconds(600))
