@@ -84,6 +84,59 @@ struct DictionaryCorrectorTests {
         #expect(corrector(known: ["resent"]).apply(to: "I resent that").text == "I resent that")
     }
 
+    /// What this does in real use: a name saved in the dictionary ("Justin", "Dustin", "likerts", "andrew") must not replace
+    /// two ordinary words that happen to spell it, or sit one letter away from it, once they are run together. Every phrase
+    /// below is an ordinary phrase of the kind that was rewritten in the saved history (more than fifty times).
+    @Test func ordinaryWordsAreNeverTurnedIntoASavedName() {
+        let everyday: Set<String> = [
+            "just", "a", "an", "one", "on", "at", "am", "you", "are", "human", "like", "it's", "and", "re", "in", "is", "new",
+            "it", "was", "thing", "hour", "my", "morning", "great", "send", "check", "type", "enneagram", "case", "time",
+            "dust", "the", "shelf", "he", "arrived", "ideas", "something", "test",
+        ]
+        let c = DictionaryCorrector(
+            entries: [
+                DictionaryEntry(word: "Justin"), DictionaryEntry(word: "Dustin"), DictionaryEntry(word: "likerts"),
+                DictionaryEntry(word: "andrew"), DictionaryEntry(word: "Enneagram"),
+                DictionaryEntry(word: "Higgsfield", heardAs: ["higgs field"]),
+            ],
+            isKnownWord: { everyday.contains($0) })
+        for phrase in [
+            "you are just a human",
+            "bring a coat just in case",
+            "he arrived just on time",
+            "the dust on the shelf",
+            "it was just one thing",
+            "something like it's a test",
+            "send it and re check it",
+            "and new ideas",
+            "my Enneagram in the morning",
+            "Higgsfield is great",
+        ] {
+            #expect(c.apply(to: phrase).text == phrase, "changed: \(phrase)")
+            #expect(c.apply(to: phrase).corrections.isEmpty, "recorded a correction: \(phrase)")
+        }
+        // A near miss of ONE word that is not a real word is still fixed.
+        #expect(c.apply(to: "I met Justen").text == "I met Justin")
+        #expect(c.apply(to: "my Higgs field plan").text == "my Higgsfield plan")
+    }
+
+    /// Words that are heard in pieces still join up when the saved entry says so, or when one piece is not an ordinary word.
+    @Test func piecesJoinOnlyWhenTheEntryOrTheWordsAskForIt() {
+        let everyday: Set<String> = ["end", "game", "pine", "cone", "chat", "next"]
+        let c = DictionaryCorrector(
+            entries: [
+                DictionaryEntry(word: "endgame", heardAs: ["end game"]),   // listed by the user: trusted
+                DictionaryEntry(word: "Pinecone"),                          // two ordinary words run together: not trusted
+                DictionaryEntry(word: "ChatGPT"),                           // "gpt" is not an ordinary word: joins
+                DictionaryEntry(word: "Next.js"),                           // saved with a mark in it: joins
+            ],
+            isKnownWord: { everyday.contains($0) })
+        #expect(c.apply(to: "the end game plan").text == "the endgame plan")
+        #expect(c.apply(to: "a pine cone fell").text == "a pine cone fell")
+        #expect(c.apply(to: "I asked chat gpt").text == "I asked ChatGPT")
+        #expect(c.apply(to: "built with next js").text == "built with Next.js")
+    }
+
     @Test func lowercaseWordsNeverForceACapitalOrTakeOneAway() {
         let c = DictionaryCorrector(entries: [
             DictionaryEntry(word: "stripe", heardAs: ["strype"]),

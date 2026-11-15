@@ -25,9 +25,14 @@ public struct Correction: Codable, Equatable {
 
 /// Swaps misheard words for the spellings in your dictionary.
 /// Three kinds of match, tried in this order for each stretch of up to four words:
-/// 1. the dictionary word itself with different capitals or spacing ("super base" and "Supabase"),
+/// 1. the dictionary word itself with different capitals or spacing ("next js" and "Next.js"),
 /// 2. any "heard as" spelling you listed,
-/// 3. a near miss (one or two letters off) of a longer word, but only when the heard word is not a real word.
+/// 3. a near miss (one or two letters off) of a longer word, but only for ONE heard word, and only when it is not a real word.
+///
+/// Ordinary words are never rewritten into a saved name. Two ordinary words run together can spell, or nearly spell, a name
+/// ("just in" and "Justin", "dust on" and "Dustin", "like it's" and "likerts"). Such a stretch is left alone unless the saved
+/// entry lists it under "heard as", or one of its words is not an ordinary word. The saved history showed more than fifty
+/// of these wrong rewrites, some of which even deleted a word ("Higgsfield is" became "Higgsfield").
 public struct DictionaryCorrector {
     public var entries: [DictionaryEntry]
     private let isKnownWord: (String) -> Bool
@@ -52,9 +57,17 @@ public struct DictionaryCorrector {
         guard !tokens.isEmpty else { return (text, []) }
 
         var exact: [String: String] = [:]
+        // Spellings that may join several heard words into one: anything listed under "heard as", and a word saved with a space
+        // or a mark in it ("Claude Code", "Next.js"), which is written in pieces on purpose.
+        var inPieces: Set<String> = []
         for entry in entries {
-            exact[Self.normalize(entry.word)] = entry.word
-            for heard in entry.heardAs { exact[Self.normalize(heard)] = entry.word }
+            let own = Self.normalize(entry.word)
+            exact[own] = entry.word
+            if entry.word.contains(where: { !$0.isLetter && !$0.isNumber }) { inPieces.insert(own) }
+            for heard in entry.heardAs {
+                exact[Self.normalize(heard)] = entry.word
+                inPieces.insert(Self.normalize(heard))
+            }
         }
         let fuzzy = entries.compactMap { entry -> (key: String, word: String)? in
             let key = Self.normalize(entry.word)
@@ -72,13 +85,15 @@ public struct DictionaryCorrector {
                 let hasAddress = window.contains(where: \.isAddress)
                 guard Self.onlySpacesBetween(window, in: text), !(hasAddress && size > 1) else { continue }
                 let joined = Self.normalize(window.map(\.text).joined())
-                if let written = exact[joined] {
+                // Several heard words become one saved word only when the entry allows it, or when one of them is not an ordinary word.
+                if let written = exact[joined],
+                   size == 1 || inPieces.contains(joined) || window.contains(where: { !isKnownWord($0.text.lowercased()) }) {
                     match = (size, written)
                     break
                 }
                 // The spell checker is the slow part (about 1.5 ms a call, so over two seconds on a 700-word dictation): it is asked only
                 // about a word that is already a near miss of something in the dictionary, which is almost never.
-                if size <= 2, !hasAddress, let written = Self.nearest(joined, in: fuzzy), !isKnownWord(joined) {
+                if size == 1, !hasAddress, let written = Self.nearest(joined, in: fuzzy), !isKnownWord(joined) {
                     match = (size, written)
                     break
                 }
