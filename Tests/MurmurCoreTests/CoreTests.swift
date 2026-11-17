@@ -921,3 +921,99 @@ struct SentenceRepairTests {
                 == "An event is simply an occurrence that has a timestamp, and that is all.")
     }
 }
+
+@Suite("Spoken lists")
+struct SpokenListTests {
+    func f(_ text: String) -> String { BulletLists.format(text) }
+
+    @Test func aSpokenNumberedSeriesBecomesANumberedList() {
+        #expect(
+            f("I have two things. Number one, we need a new icon. Number two, the colours are off.")
+                == "I have two things.\n1. We need a new icon.\n2. The colours are off.")
+        #expect(f("Number 1, the icon. Number 2: the footer.") == "1. The icon.\n2. The footer.")
+    }
+
+    @Test func firstSecondThirdBecomesANumberedList() {
+        #expect(
+            f("There are three problems. First, the logo is blurry. Second, the footer is missing. Third, the page is slow.")
+                == "There are three problems.\n1. The logo is blurry.\n2. The footer is missing.\n3. The page is slow.")
+    }
+
+    @Test func theSecondThingIsCountsAsAMarker() {
+        #expect(
+            f("We should give them three options. First, run a chemistry analysis. The second thing is, browse the profile. And the third thing is to chat with the coach.")
+                == "We should give them three options.\n1. Run a chemistry analysis.\n2. Browse the profile.\n3. To chat with the coach.")
+    }
+
+    @Test func aMarkerThatStartsWithAndMayFollowAComma() {
+        #expect(
+            f("We should give them three options. First, run the analysis. The second thing is, browse the profile at their own pace, and the third thing is to chat with the coach.")
+                == "We should give them three options.\n1. Run the analysis.\n2. Browse the profile at their own pace.\n3. To chat with the coach.")
+        // Without "and" a word after a comma is just a word.
+        #expect(f("I like it, second, I think so.") == "I like it, second, I think so.")
+    }
+
+    @Test func aSpokenBulletBecomesADash() {
+        #expect(f("Bullet point, buy milk. Bullet point, call the plumber.") == "- Buy milk.\n- Call the plumber.")
+        #expect(
+            f("My list for today. Bullet point, buy milk. Next bullet, call the plumber. Next bullet, book the flights.")
+                == "My list for today.\n- Buy milk.\n- Call the plumber.\n- Book the flights.")
+    }
+
+    @Test func anItemKeepsAllItsSentencesAndTheListEndsAtAParagraphBreak() {
+        #expect(
+            f("Number one, the icon is blurry. It looks bad on dark mode. Number two, the footer is missing.\n\nNow a different topic.")
+                == "1. The icon is blurry. It looks bad on dark mode.\n2. The footer is missing.\n\nNow a different topic.")
+        // A pause between two points is still one list.
+        #expect(f("Number one, the icon.\n\nNumber two, the footer.") == "1. The icon.\n2. The footer.")
+    }
+
+    @Test func twoListsInOneDictationAreBothFormatted() {
+        #expect(
+            f("Number one, the icon. Number two, the footer.\n\nFirst, the budget. Second, the date.")
+                == "1. The icon.\n2. The footer.\n\n1. The budget.\n2. The date.")
+    }
+
+    @Test func aLeadInParagraphKeepsItsBlankLine() {
+        #expect(f("Here is the plan.\n\nFirst, the budget. Second, the date.") == "Here is the plan.\n\n1. The budget.\n2. The date.")
+    }
+
+    @Test func ordinaryTalkIsNeverTurnedIntoAList() {
+        let unchanged = [
+            // one marker is not a series
+            "First, we need to ship it. Then we test it.",
+            // replying to someone else's numbered items
+            "Yes to item one. Yes to item two.",
+            "Number one answer is yes. Number two answer is yes. Number three is yes.",
+            // the numbers sit inside a sentence
+            "It asks whether they are number one, a coach or a client, and then number two, a participant.",
+            "Please use bullet points, then add a summary.",
+            "Create two bullets on that person's style.",
+            "Bullet points, please.",
+            // wrong order, wrong start, a gap
+            "Second, the cost. First, the time.",
+            "Number two, the cost. Number three, the time.",
+            "Number one, the cost. Number three, the time.",
+            // counting, and a marker with nothing after it
+            "One, two, three, go!",
+            "Number one, is there redundancy in any of the screens? Number two.",
+            "I came in second. I was first on Monday.",
+        ]
+        for text in unchanged { #expect(f(text) == text, "changed: \(text)") }
+    }
+
+    @Test func theFullPipelineMakesTheList() {
+        #expect(
+            SpokenText.tidy("Um, here are the points. Number one, we need a new icon. Number two, the colours are off.")
+                == "Here are the points.\n1. We need a new icon.\n2. The colours are off.")
+        #expect(
+            SpokenText.tidy("Number one, the icon. Number two, the footer.", lists: false)
+                == "Number one, the icon. Number two, the footer.")
+    }
+
+    @Test func theSettingIsOnByDefaultAndCanBeSwitchedOffInTheFile() throws {
+        #expect(Settings().bulletLists)
+        #expect(try JSONDecoder().decode(Settings.self, from: Data("{}".utf8)).bulletLists)
+        #expect(try JSONDecoder().decode(Settings.self, from: Data(#"{"bulletLists": false}"#.utf8)).bulletLists == false)
+    }
+}

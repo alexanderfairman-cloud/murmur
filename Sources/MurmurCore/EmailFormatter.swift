@@ -223,9 +223,10 @@ public enum EmailFormatter {
 
 /// Everything done to the speech model's words before the dictionary sees them.
 public enum SpokenText {
-    public static func tidy(_ raw: String, removeFillers: Bool = true) -> String {
+    public static func tidy(_ raw: String, removeFillers: Bool = true, lists: Bool = true) -> String {
         let cleaner = TextCleaner()
         let cleaned = removeFillers ? cleaner.clean(raw) : cleaner.trimmed(raw)
-        return EmailFormatter.format(SentenceSmoother.smooth(SentenceRepair.apply(SpokenPunctuation.apply(cleaned))))
+        let text = EmailFormatter.format(SentenceSmoother.smooth(SentenceRepair.apply(SpokenPunctuation.apply(cleaned))))
+        return lists ? BulletLists.format(text) : text
     }
 }

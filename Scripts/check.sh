@@ -7,7 +7,7 @@
 #      This proves the model loads, runs on this Mac, is fast, and the dictionary is applied.
 #   5. Spoken email addresses are written with @, and ordinary talk about websites is left alone.
 #   6. Pauses: recordings with exact silences become sentences and paragraphs.
-#   7. Spoken punctuation: the words "comma" and "period" become the marks, and the model's own marks around them are not doubled.
+#   7. Spoken punctuation and lists: the words "comma" and "period" become the marks, and a spoken "number one, number two" series becomes a numbered list while replies that mention item numbers are left alone.
 #   None of this proves the microphone, the Fn key, typing into other apps, or a real voice work. Those need a person.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -135,19 +135,28 @@ if problems:
 print("PASS: sentence break, paragraph break, unfinished sentence, short pause and thinking pauses all handled")
 PY
 
-echo "== 7/7 Spoken comma and period"
+echo "== 7/7 Spoken comma, period and lists"
 # Saying "comma" or "period" must give the mark, not the word, with no doubled marks from the speech model.
 say -v Samantha -o "$TMP/punct-a.aiff" "Hey John, great to see you, comma, hoping that we can get together soon."
 say -v Samantha -o "$TMP/punct-b.aiff" "Sam, I think this is an amazing idea, period. Let's get together next week."
 PA="$("$BIN" --transcribe "$TMP/punct-a.aiff" --no-pauses)"
 PB="$("$BIN" --transcribe "$TMP/punct-b.aiff" --no-pauses)"
-python3 -I - "$PA" "$PB" <<'PY'
+say -v Samantha -o "$TMP/list-a.aiff" "Here is what I need. Number one, we need a new icon. Number two, the colors are off. Number three, the footer is missing."
+say -v Samantha -o "$TMP/list-b.aiff" "Yes to item one. Yes to item two, and for number three, I think it is fine."
+LA="$("$BIN" --transcribe "$TMP/list-a.aiff" --no-pauses)"
+LB="$("$BIN" --transcribe "$TMP/list-b.aiff" --no-pauses)"
+python3 -I - "$PA" "$PB" "$LA" "$LB" <<'PY'
 import json, sys
-a, b = (json.loads(x)["text"] for x in sys.argv[1:3])
+a, b, la, lb = (json.loads(x)["text"] for x in sys.argv[1:5])
 problems = []
 if "see you, hoping" not in a or "comma" in a.lower(): problems.append("a spoken comma was not turned into a comma: " + repr(a))
 if "idea. Let's get together" not in b or "period" in b.lower(): problems.append("a spoken period was not turned into a full stop: " + repr(b))
+# a spoken series becomes a numbered list; a reply that only mentions item numbers is not a list
+if "\n1. We need a new icon." not in la or "\n3. The footer is missing." not in la:
+    problems.append("a spoken number-one, number-two series did not become a numbered list: " + repr(la))
+if "\n" in lb:
+    problems.append("a reply that mentions item numbers was turned into a list: " + repr(lb))
 if problems:
     print("FAIL:", "; ".join(problems)); sys.exit(1)
-print("PASS: a spoken comma and a spoken period become the marks")
+print("PASS: a spoken comma and period become the marks, a spoken series becomes a numbered list, replies stay as said")
 PY

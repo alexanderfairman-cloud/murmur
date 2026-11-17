@@ -10,6 +10,8 @@ public struct Settings: Codable, Equatable {
     public var sounds: Bool = true
     public var trailingSpace: Bool = true
     public var removeFillers: Bool = true
+    /// Turn a spoken series ("number one ... number two", "first ... second", "bullet point") into a list. See `BulletLists`.
+    public var bulletLists: Bool = true
     /// Turn long pauses into full stops and new paragraphs. See `PauseRules`.
     public var pauseBreaks: Bool = true
     /// Use the Mac's own microphone when the chosen one is a Bluetooth headset, whose microphone can deliver no sound.
@@ -31,6 +33,7 @@ public struct Settings: Codable, Equatable {
         sounds = try c.decodeIfPresent(Bool.self, forKey: .sounds) ?? d.sounds
         trailingSpace = try c.decodeIfPresent(Bool.self, forKey: .trailingSpace) ?? d.trailingSpace
         removeFillers = try c.decodeIfPresent(Bool.self, forKey: .removeFillers) ?? d.removeFillers
+        bulletLists = try c.decodeIfPresent(Bool.self, forKey: .bulletLists) ?? d.bulletLists
         pauseBreaks = try c.decodeIfPresent(Bool.self, forKey: .pauseBreaks) ?? d.pauseBreaks
         preferBuiltInMicrophone = try c.decodeIfPresent(Bool.self, forKey: .preferBuiltInMicrophone) ?? d.preferBuiltInMicrophone
         sentencePause = try c.decodeIfPresent(Double.self, forKey: .sentencePause) ?? d.sentencePause
